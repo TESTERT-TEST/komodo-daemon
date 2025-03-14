@@ -626,6 +626,10 @@ TEST(TestParseNotarisation, FilePaths)
             komodo << "rpcuser=" << user << "\n"
                     << "rpcpassword=" << pass << "\n"
                     << "rpcport=" << std::to_string(port) << "\n";
+            komodo.flush();
+            if (!komodo.good()) {
+                return false;
+            }
             return true;
         }
         boost::filesystem::path data_path;
@@ -657,6 +661,7 @@ TEST(TestParseNotarisation, FilePaths)
         memset(BTCUSERPASS, 0, sizeof(BTCUSERPASS) );
         DEST_PORT=0;
         IS_KOMODO_NOTARY = 0;
+        chainName = assetchain(""); // mandatory assume chain is KMD for this test
         home.create_config(home.kmd_dir / "regtest" / komodo_conf, "test1", "my_password", 1234);
         set_kmd_user_password_port("");
         EXPECT_EQ( std::string(KMDUSERPASS), std::string("test1:my_password") );
