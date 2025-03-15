@@ -225,6 +225,8 @@ static void write_t_record_new(std::FILE* fp)
 
 TEST(TestEvalNotarisation, test_komodo_notarysinit)
 {
+    komodo_notaries_uninit(); // cleanup
+
     // make an empty komodostate file
     boost::filesystem::path temp_path = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path();
     boost::filesystem::create_directories(temp_path);
