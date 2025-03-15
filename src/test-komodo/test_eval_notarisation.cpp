@@ -252,6 +252,7 @@ TEST(TestEvalNotarisation, test_komodo_notarysinit)
     uint8_t new_notaries[64][33];
     memcpy(new_notaries[0], new_key, 33);
 
+    komodo_notaries_uninit(); // clear hwmheight once again
     // attempt to update with 1 key to an existing height
     komodo_notarysinit(0, new_notaries, 1);
     EXPECT_EQ(Pubkeys[0].height, 0);
