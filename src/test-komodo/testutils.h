@@ -204,3 +204,12 @@ public:
 private:
     CKey key;
 };
+
+// C++ stream interface
+class TestCout : public std::stringstream {
+    public:
+        ~TestCout();
+};
+
+#define GTEST_COUT_COLOR TestCout()
+#define GTEST_COUT_NOCOLOR std::cerr << "[          ] [ INFO ] "
