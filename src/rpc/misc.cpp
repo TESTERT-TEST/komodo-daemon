@@ -30,12 +30,12 @@
 #include "notaries_staked.h"
 #include "cc/eval.h"
 #include "cc/CCinclude.h"
+#include "Gulden/auto_checkpoints.h"
 #include "hex.h"
 #include "komodo_bitcoind.h"
 #include "komodo_notary.h"
 #include "komodo_utils.h"
 #include "komodo_globals.h"
-#include "cc/CCinclude.h"
 #ifdef ENABLE_WALLET
 #include "wallet/wallet.h"
 #include "wallet/walletdb.h"
@@ -81,7 +81,7 @@ int8_t StakedNotaryID(std::string &notaryname, char *Raddress);
 uint64_t komodo_notarypayamount(int32_t nHeight, int64_t notarycount);
 int32_t komodo_notaries(uint8_t pubkeys[64][33],int32_t height,uint32_t timestamp);*/
 
-#define KOMODO_VERSION "0.9.1"
+#define KOMODO_VERSION "0.9.2"
 extern uint16_t ASSETCHAINS_P2PPORT,ASSETCHAINS_RPCPORT;
 extern uint32_t ASSETCHAINS_CC;
 extern uint32_t ASSETCHAINS_MAGIC,ASSETCHAINS_ALGO;
@@ -1615,6 +1615,25 @@ UniValue decodeccopret(const UniValue& params, bool fHelp, const CPubKey& mypk)
     return result;
 }
 
+static UniValue getcheckpoint(const UniValue& params, bool fHelp, const CPubKey& mypk)
+{
+    if (fHelp) throw std::runtime_error("returns last sync checkpoint");
+    if (params.size() != 0)
+    {
+        throw std::runtime_error("getcheckpoint does not take arguments\n");
+    }
+
+    LOCK(Checkpoints::cs_hashSyncCheckpoint);
+            
+    UniValue chkptInfo(UniValue::VOBJ);
+    chkptInfo.push_back(Pair("checkpoint", Checkpoints::syncCheckpoint.hash.GetHex()));
+    CBlockIndex *psyncCheckpoint = Checkpoints::GetLastSyncCheckpoint();
+    if (psyncCheckpoint) {
+        chkptInfo.push_back(Pair("height", psyncCheckpoint->nHeight));
+    }
+    return chkptInfo;
+}
+
 static const CRPCCommand commands[] =
 { //  category              name                      actor (function)         okSafeMode
   //  --------------------- ------------------------  -----------------------  ----------
@@ -1623,6 +1642,7 @@ static const CRPCCommand commands[] =
     { "util",               "z_validateaddress",      &z_validateaddress,      true  }, /* uses wallet if enabled */
     { "util",               "createmultisig",         &createmultisig,         true  },
     { "util",               "verifymessage",          &verifymessage,          true  },
+    { "util",               "getcheckpoint",          &getcheckpoint,          true  },
 
     /* Not shown in help */
     { "hidden",             "setmocktime",            &setmocktime,            true  },
