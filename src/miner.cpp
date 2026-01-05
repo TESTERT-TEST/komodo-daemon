@@ -1143,19 +1143,6 @@ CBlockIndex *get_chainactive(int32_t height)
 
 int32_t gotinvalid;
 
-class RandomXSolverCanceledException : public std::exception
-{
-    virtual const char* what() const throw() {
-        return "RandomX solver was canceled";
-    }
-};
-
-enum RandomXSolverCancelCheck
-{
-    Reason1,
-    Reason2
-};
-
 int GetRandomXInterval() { return GetArg("-ac_randomx_interval",1024); }
 int GetRandomXBlockLag() { return GetArg("-ac_randomx_lag", 64);       }
 
@@ -1701,8 +1688,40 @@ void static RandomXMiner()
     CReserveKey reservekey(pwallet);
 #endif
     unsigned int nExtraNonce = 0;
-    int32_t gpucount = KOMODO_MAXGPUCOUNT;
+
+    // ==================== 1. ИНИЦИАЛИЗАЦИЯ RANDOMX (КОПИЯ HUSH) ====================
+    randomx_flags flags = randomx_get_flags();
+    flags |= RANDOMX_FLAG_FULL_MEM;
     
+    // Убираем LARGE_PAGES для совместимости, как делает Hush при неудаче
+    randomx_cache *randomxCache = randomx_alloc_cache(flags | RANDOMX_FLAG_SECURE);
+    if (randomxCache == NULL) {
+        LogPrintf("RandomX cache is null, trying without secure...\n");
+        randomxCache = randomx_alloc_cache(flags);
+        if (randomxCache == NULL) {
+            LogPrintf("FATAL: Cannot allocate RandomX cache\n");
+            return;
+        }
+    }
+
+    randomx_dataset *randomxDataset = randomx_alloc_dataset(flags);
+    if (randomxDataset == nullptr) {
+        LogPrintf("%s: allocating randomx dataset failed!\n", __func__);
+        randomx_release_cache(randomxCache);
+        return;
+    }
+
+    auto datasetItemCount = randomx_dataset_item_count();
+    char randomxHash[RANDOMX_HASH_SIZE];
+    char randomxKey[82];
+    snprintf(randomxKey, 81, "%08x%s%08x", ASSETCHAINS_MAGIC, chainName.symbol().c_str(), ASSETCHAINS_RPCPORT);
+
+    static int randomxInterval = GetRandomXInterval();   // 1024
+    static int randomxBlockLag = GetRandomXBlockLag();   // 64
+    randomx_vm *myVM = nullptr;
+    // ==================== КОНЕЦ ИНИЦИАЛИЗАЦИИ RANDOMX ====================
+
+    // Ожидание инициализации цепи (логика Komodo)
     while (ASSETCHAIN_INIT == 0 || KOMODO_INITDONE == 0) {
         boost::this_thread::sleep_for(boost::chrono::seconds(1));
         if (komodo_baseid(chainName.symbol().c_str()) < 0)
@@ -1719,42 +1738,9 @@ void static RandomXMiner()
     );
     miningTimer.start();
 
-    // RandomX initialization
-    randomx_flags flags = randomx_get_flags();
-    flags |= RANDOMX_FLAG_FULL_MEM;
-    randomx_cache *randomxCache = randomx_alloc_cache(flags | RANDOMX_FLAG_LARGE_PAGES | RANDOMX_FLAG_SECURE);
-    if (randomxCache == NULL) {
-        LogPrintf("RandomX cache is null, trying without large pages...\n");
-        randomxCache = randomx_alloc_cache(flags | RANDOMX_FLAG_SECURE);
-        if (randomxCache == NULL) {
-            LogPrintf("RandomX cache is null, trying without secure...\n");
-            randomxCache = randomx_alloc_cache(flags);
-        }
-    }
-
-    randomx_dataset *randomxDataset = randomx_alloc_dataset(flags);
-    if (randomxDataset == nullptr) {
-        LogPrintf("%s: allocating randomx dataset failed!\n", __func__);
-        return;
-    }
-
-    auto datasetItemCount = randomx_dataset_item_count();
-    char randomxHash[RANDOMX_HASH_SIZE];
-    char randomxKey[82];
-    snprintf(randomxKey, 81, "%08x%s%08x", ASSETCHAINS_MAGIC, chainName.symbol().c_str(), ASSETCHAINS_RPCPORT);
-
-    static int randomxInterval = GetRandomXInterval();
-    static int randomxBlockLag = GetRandomXBlockLag();
-    randomx_vm *myVM = nullptr;
-
     try {
         while (true) {
-            // Check for staking mode
-            bool isStake = false;
-            if (ASSETCHAINS_STAKED != 0 && KOMODO_MININGTHREADS == 0) {
-                isStake = true;
-            }
-
+            // ==================== 2. ОЖИДАНИЕ ПИРОВ (ЛОГИКА KOMODO) ====================
             if (chainparams.MiningRequiresPeers()) {
                 miningTimer.stop();
                 do {
@@ -1770,7 +1756,7 @@ void static RandomXMiner()
                 miningTimer.start();
             }
 
-            // Get current chain tip
+            // Получаем текущую высоту
             CBlockIndex* pindexPrev;
             {
                 LOCK(cs_main);
@@ -1787,9 +1773,9 @@ void static RandomXMiner()
                 Mining_start = (uint32_t)time(NULL);
             }
 
-            // Initialize RandomX cache with appropriate key
+            // ==================== 3. ОБНОВЛЕНИЕ КЛЮЧА RANDOMX (КОПИЯ HUSH) ====================
             if (Mining_height < randomxInterval + randomxBlockLag) {
-                randomx_init_cache(randomxCache, &randomxKey, sizeof randomxKey);
+                randomx_init_cache(randomxCache, &randomxKey, sizeof(randomxKey));
             } else {
                 const int keyHeight = ((Mining_height - randomxBlockLag) / randomxInterval) * randomxInterval;
                 CBlockIndex* keyBlockIndex;
@@ -1799,28 +1785,12 @@ void static RandomXMiner()
                 }
                 if (keyBlockIndex) {
                     uint256 randomxBlockKey = keyBlockIndex->GetBlockHash();
-                    randomx_init_cache(randomxCache, &randomxBlockKey, sizeof randomxBlockKey);
+                    randomx_init_cache(randomxCache, &randomxBlockKey, sizeof(randomxBlockKey));
                 }
             }
 
-            // Initialize dataset
-            const int initThreadCount = std::thread::hardware_concurrency();
-            if (initThreadCount > 1) {
-                std::vector<std::thread> threads;
-                uint32_t startItem = 0;
-                const auto perThread = datasetItemCount / initThreadCount;
-                const auto remainder = datasetItemCount % initThreadCount;
-                for (int i = 0; i < initThreadCount; ++i) {
-                    const auto count = perThread + (i == initThreadCount - 1 ? remainder : 0);
-                    threads.push_back(std::thread(&randomx_init_dataset, randomxDataset, randomxCache, startItem, count));
-                    startItem += count;
-                }
-                for (unsigned i = 0; i < threads.size(); ++i) {
-                    threads[i].join();
-                }
-            } else {
-                randomx_init_dataset(randomxDataset, randomxCache, 0, datasetItemCount);
-            }
+            // Инициализация датасета (упрощенная, однопоточная)
+            randomx_init_dataset(randomxDataset, randomxCache, 0, datasetItemCount);
 
             myVM = randomx_create_vm(flags, nullptr, randomxDataset);
             if (myVM == NULL) {
@@ -1829,8 +1799,13 @@ void static RandomXMiner()
                 continue;
             }
 
+            // ==================== 4. СОЗДАНИЕ БЛОКА KOMODO (С ПОДДЕРЖКОЙ PoS) ====================
+            // КРИТИЧЕСКИ ВАЖНО: isStake = true если это PoS-цепь
+            bool isStake = (ASSETCHAINS_STAKED != 0 && KOMODO_MININGTHREADS == 0);
+            
 #ifdef ENABLE_WALLET
-            CBlockTemplate *ptr = CreateNewBlockWithKey(reservekey, pindexPrev->nHeight + 1, gpucount, isStake);
+            CBlockTemplate *ptr = CreateNewBlockWithKey(reservekey, pindexPrev->nHeight + 1, 
+                                                        KOMODO_MAXGPUCOUNT, isStake);
 #else
             CBlockTemplate *ptr = CreateNewBlockWithKey();
 #endif
@@ -1854,18 +1829,20 @@ void static RandomXMiner()
 
             CBlock *pblock = &pblocktemplate->block;
             
-            // For staking, we don't need to do PoW, just wait for stake
+            // ==================== 5. ПОЛНАЯ ОБРАБОТКА STAKE-БЛОКОВ (ЛОГИКА KOMODO) ====================
             if (isStake) {
-                // In staking mode, we just need to validate and broadcast the staking block
+                // ВАЖНО: Для stake-блоков мы НЕ делаем PoW, а используем штатную логику Komodo
+                // Это соответствует гибридной модели: PoS-блоки не требуют PoW
                 CValidationState state;
                 if (!ProcessNewBlock(1, pindexPrev->nHeight + 1, state, NULL, pblock, true, NULL)) {
                     LogPrintf("RandomXMiner: Staking block not accepted\n");
                 }
                 MilliSleep(1000);
-                continue;
+                continue; // Переходим к следующей итерации для нового блока
             }
 
-            // PoW mining with RandomX
+            // ==================== 6. PoW МАЙНИНГ С RANDOMX (КОПИЯ HUSH) ====================
+            // Если isStake == false, это обычный PoW-блок - майним его через RandomX
             IncrementExtraNonce(pblock, pindexPrev, nExtraNonce);
             
             LogPrintf("Running KomodoRandomXMiner with %u transactions in block (%u bytes)\n", 
@@ -1876,11 +1853,12 @@ void static RandomXMiner()
             Mining_start = 0;
             gotinvalid = 0;
 
+            // ==================== 7. ЦИКЛ ПОДБОРА NONCE (КОПИЯ HUSH) ====================
             while (true) {
                 if (gotinvalid != 0)
                     break;
 
-                // Get the current tip to check for chain reorganization
+                // Проверка реорганизации цепи
                 CBlockIndex* currentTip;
                 {
                     LOCK(cs_main);
@@ -1889,34 +1867,35 @@ void static RandomXMiner()
                 if (pindexPrev != currentTip)
                     break;
 
-                // Prepare block data for RandomX
+                // Подготовка данных для RandomX
                 CDataStream randomxInput(SER_NETWORK, PROTOCOL_VERSION);
                 randomxInput << *pblock;
 
-                // Calculate RandomX hash
-                randomx_calculate_hash(myVM, &randomxInput, randomxInput.size(), randomxHash);
+                // ВЫЧИСЛЕНИЕ ХЭША RANDOMX (ядро логики Hush)
+                // Исправление: используем &randomxInput[0] вместо .data()
+                randomx_calculate_hash(myVM, &randomxInput[0], randomxInput.size(), randomxHash);
 
-                // Validate the RandomX solution
+                // Проверка решения
                 std::function<bool(std::vector<unsigned char>)> validBlock =
 #ifdef ENABLE_WALLET
-                    [&pblock, &HASHTarget, &pwallet, &reservekey, &m_cs, &cancelSolver, &chainparams, isStake]
+                    [&pblock, &HASHTarget, &pwallet, &reservekey, &m_cs, &cancelSolver, &chainparams, &isStake]
 #else
-                    [&pblock, &HASHTarget, &m_cs, &cancelSolver, &chainparams, isStake]
+                    [&pblock, &HASHTarget, &m_cs, &cancelSolver, &chainparams, &isStake]
 #endif
                     (std::vector<unsigned char> soln) {
-                        // Convert RandomX hash to solution
+                        // Используем хэш RandomX как решение
                         pblock->nSolution = soln;
                         solutionTargetChecks.increment();
                         
                         CBlock B = *pblock;
                         arith_uint256 h = UintToArith256(B.GetHash());
                         
+                        // Проверка соответствия цели сложности
                         if (h > HASHTarget)
                             return false;
                         
-                        // Check for hybrid PoW/PoS
+                        // Для гибридных цепей: дополнительная проверка PoW цели
                         if (ASSETCHAINS_STAKED > 0 && ASSETCHAINS_STAKED < 100 && !isStake) {
-                            // Calculate PoS target for hybrid chains
                             int32_t percPoS;
                             arith_uint256 hashTarget_POW = komodo_PoWtarget(&percPoS, HASHTarget, 
                                 Mining_height, ASSETCHAINS_STAKED, 
@@ -1927,6 +1906,7 @@ void static RandomXMiner()
                             }
                         }
                         
+                        // Финальная валидация блока Komodo
                         CValidationState state;
                         bool blockValid;
                         {
@@ -1939,6 +1919,7 @@ void static RandomXMiner()
                             return false;
                         }
                         
+                        // Блок найден - обработка
                         SetThreadPriority(THREAD_PRIORITY_NORMAL);
                         LogPrintf("KomodoRandomXMiner:\n");
                         LogPrintf("proof-of-work found\n  hash: %s\n  target: %s\n", 
@@ -1960,27 +1941,28 @@ void static RandomXMiner()
                         return true;
                     };
                 
-                std::function<bool(RandomXSolverCancelCheck)> cancelled = 
-                    [&m_cs, &cancelSolver](RandomXSolverCancelCheck pos) {
+                std::function<bool()> cancelled = 
+                    [&m_cs, &cancelSolver]() {
                         std::lock_guard<std::mutex> lock{m_cs};
                         return cancelSolver;
                     };
                 
+                // Проверяем найденное решение
                 try {
                     std::vector<unsigned char> sol_char(randomxHash, randomxHash + 32);
                     bool found = validBlock(sol_char);
                     if (found) {
                         break;
                     }
-                } catch (RandomXSolverCanceledException&) {
+                } catch (std::exception&) {
                     LogPrintf("KomodoRandomXMiner solver canceled\n");
                     std::lock_guard<std::mutex> lock{m_cs};
                     cancelSolver = false;
                 }
                 
+                // Условия выхода из цикла
                 boost::this_thread::interruption_point();
                 
-                // Check for stop conditions
                 if (vNodes.empty() && chainparams.MiningRequiresPeers()) {
                     if (chainName.isKMD() || Mining_height > ASSETCHAINS_MINHEIGHT) {
                         break;
@@ -1991,17 +1973,18 @@ void static RandomXMiner()
                     break;
                 }
                 
-                // Update nonce and continue
+                // Обновление nonce для следующей попытки
                 pblock->nNonce = ArithToUint256(UintToArith256(pblock->nNonce) + 1);
                 pblock->nBits = savebits;
             }
             
             randomx_destroy_vm(myVM);
+            myVM = nullptr;
         }
     } catch (const boost::thread_interrupted&) {
         miningTimer.stop();
         c.disconnect();
-        randomx_destroy_vm(myVM);
+        if (myVM) randomx_destroy_vm(myVM);
         randomx_release_dataset(randomxDataset);
         randomx_release_cache(randomxCache);
         LogPrintf("KomodoRandomXMiner terminated\n");
@@ -2009,7 +1992,7 @@ void static RandomXMiner()
     } catch (const std::runtime_error &e) {
         miningTimer.stop();
         c.disconnect();
-        randomx_destroy_vm(myVM);
+        if (myVM) randomx_destroy_vm(myVM);
         randomx_release_dataset(randomxDataset);
         randomx_release_cache(randomxCache);
         LogPrintf("KomodoRandomXMiner runtime error: %s\n", e.what());
