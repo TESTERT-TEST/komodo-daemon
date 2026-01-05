@@ -508,7 +508,7 @@ std::string HelpMessage(HelpMessageMode mode)
         strUsage += HelpMessageOpt("-nuparams=hexBranchId:activationHeight", "Use given activation height for specified network upgrade (regtest-only)");
     }
     string debugCategories = "addrman, alert, bench, coindb, db, estimatefee, http, libevent, lock, mempool, net, partitioncheck, pow, proxy, prune, "
-                             "rand, reindex, rpc, selectcoins, tor, zmq, zrpc, zrpcunsafe (implies zrpc)"; // Don't translate these
+                             "rand, randomx, reindex, rpc, selectcoins, tor, zmq, zrpc, zrpcunsafe (implies zrpc)"; // Don't translate these
     strUsage += HelpMessageOpt("-debug=<category>", strprintf(_("Output debugging information (default: %u, supplying <category> is optional)"), 0) + ". " +
         _("If <category> is not supplied or if <category> = 1, output all debugging information.") + " " + _("<category> can be:") + " " + debugCategories + ".");
     strUsage += HelpMessageOpt("-experimentalfeatures", _("Enable use of experimental features"));
@@ -586,7 +586,7 @@ std::string HelpMessage(HelpMessageMode mode)
         strUsage += HelpMessageOpt("-metricsrefreshtime", strprintf(_("Number of seconds between metrics refreshes (default: %u if running in a console, %u otherwise)"), 1, 600));
     }
     strUsage += HelpMessageGroup(_("Komodo Asset Chain options:"));
-    strUsage += HelpMessageOpt("-ac_algo", _("Choose PoW mining algorithm, default is Equihash"));
+    strUsage += HelpMessageOpt("-ac_algo", _("Choose PoW mining algorithm, either 'equihash' or 'randomx'. default is Equihash (200,9)""));
     strUsage += HelpMessageOpt("-ac_blocktime", _("Block time in seconds, default is 60"));
     strUsage += HelpMessageOpt("-ac_cc", _("Cryptoconditions, default 0"));
     strUsage += HelpMessageOpt("-ac_beam", _("BEAM integration"));
@@ -606,6 +606,9 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-ac_pubkey", _("Public key for receiving payments on the network"));
     strUsage += HelpMessageOpt("-ac_public", _("Transparent transactions only, default 0"));
     strUsage += HelpMessageOpt("-ac_reward", _("Block reward in satoshis, default is 0"));
+	// All RandomX algo
+	strUsage += HelpMessageOpt("-ac_randomx_interval", _("Controls how often the RandomX key block will change, default is 1024"));
+    strUsage += HelpMessageOpt("-ac_randomx_lag", _("Sets the number of RandomX blocks to wait before updating the key block, default is 64"));
     strUsage += HelpMessageOpt("-ac_sapling", _("Sapling activation block height"));
     strUsage += HelpMessageOpt("-ac_script", _("P2SH/multisig address to receive founders rewards"));
     strUsage += HelpMessageOpt("-ac_staked", _("Percentage of blocks that are Proof-Of-Stake, default 0"));
@@ -1226,7 +1229,12 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             v.push_back("zrpc");
         }
     }
-
+	
+    if (find(categories.begin(), categories.end(), string("randomx")) != categories.end()) {
+        fRandomXDebug = true;
+        fprintf(stderr,"%s: enabled randomx debug\n", __func__);
+    }
+	
     // Check for -debugnet
     if (GetBoolArg("-debugnet", false))
         InitWarning(_("Warning: Unsupported argument -debugnet ignored, use -debug=net."));

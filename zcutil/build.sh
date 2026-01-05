@@ -114,4 +114,18 @@ HOST="$HOST" BUILD="$BUILD" NO_PROTON="$PROTON_ARG" "$MAKE" "$@" -C ./depends/
 
 CONFIG_SITE="$PWD/depends/$HOST/share/config.site" ./configure "$HARDENING_ARG" "$LCOV_ARG" "$TEST_ARG" "$MINING_ARG" "$PROTON_ARG" "$DEBUGGING_ARG" "$CONFIGURE_FLAGS"
 
+# Build RandomX
+WD=$PWD
+cd src/crypto/RandomX
+if [ -d "build" ]
+then
+    ls -la build/librandomx*
+else
+    mkdir build && cd build
+    cmake -DARCH=native ..
+    make
+fi
+
+cd $WD
+
 "$MAKE" "$@"

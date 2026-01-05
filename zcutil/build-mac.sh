@@ -45,6 +45,20 @@ PREFIX="$(pwd)/depends/$TRIPLET"
 
 make "$@" -C ./depends/ V=1 NO_QT=1 NO_PROTON=1
 
+# Build RandomX
+WD=$PWD
+cd src/crypto/RandomX
+if [ -d "build" ]
+then
+    ls -la build/librandomx*
+else
+    mkdir build && cd build
+    CC="${CC} -g " CXX="${CXX} -g " cmake ..
+    make
+fi
+
+cd $WD
+
 ./autogen.sh
 
 CPPFLAGS="-I$PREFIX/include -arch x86_64" LDFLAGS="-L$PREFIX/lib -arch x86_64 -Wl,-no_pie" \

@@ -40,6 +40,7 @@ LIBCRYPTOCONDITIONS=cryptoconditions/libcryptoconditions_core.a
 LIBUNIVALUE=univalue/libunivalue.la
 LIBCC=libcc.a
 LIBZCASH=libzcash.a
+LIBRANDOMX=crypto/RandomX/build/librandomx.a
 
 if ENABLE_ZMQ
 LIBBITCOIN_ZMQ=libbitcoin_zmq.a
@@ -528,7 +529,8 @@ komodod_LDADD = \
   $(LIBLEVELDB) \
   $(LIBMEMENV) \
   $(LIBSECP256K1) \
-  $(LIBCRYPTOCONDITIONS)
+  $(LIBCRYPTOCONDITIONS) \
+  $(LIBRANDOMX)
 
 if ENABLE_WALLET
 komodod_LDADD += $(LIBBITCOIN_WALLET)
@@ -599,7 +601,8 @@ wallet_utility_LDADD = \
 	$(CRYPTO_LIBS) \
 	$(LIBZCASH) \
 	$(LIBZCASH_LIBS)\
-	$(LIBCRYPTOCONDITIONS)
+	$(LIBCRYPTOCONDITIONS)\
+    $(LIBRANDOMX)
 endif
 
 # zcash-tx binary #
@@ -621,7 +624,8 @@ komodo_tx_LDADD = \
   $(LIBZCASH) \
   $(LIBBITCOIN_CRYPTO) \
   $(LIBZCASH_LIBS) \
-  $(LIBCRYPTOCONDITIONS)
+  $(LIBCRYPTOCONDITIONS) \
+  $(LIBRANDOMX)
 
 komodo_tx_LDADD += $(BOOST_LIBS) $(CRYPTO_LIBS)
 
