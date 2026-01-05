@@ -74,6 +74,8 @@
 #include <functional>
 #endif
 #include <mutex>
+#include <thread>  // ДОБАВЬТЕ ЭТУ СТРОЧКУ
+#include <chrono>  // ДОБАВЬТЕ ЭТУ СТРОЧКУ (может понадобиться для std::this_thread)
 
 #define rxdebug(format, ...) if(fRandomXDebug) { fprintf(stderr, format, __func__, ## __VA_ARGS__ ); }
 

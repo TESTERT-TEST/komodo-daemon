@@ -82,6 +82,7 @@ uint64_t komodo_notarypayamount(int32_t nHeight, int64_t notarycount);
 int32_t komodo_notaries(uint8_t pubkeys[64][33],int32_t height,uint32_t timestamp);*/
 
 #define KOMODO_VERSION "0.9.2"
+#define AQS_VERSION "0.0.1"
 extern uint16_t ASSETCHAINS_P2PPORT,ASSETCHAINS_RPCPORT;
 extern uint32_t ASSETCHAINS_CC;
 extern uint32_t ASSETCHAINS_MAGIC,ASSETCHAINS_ALGO;
@@ -252,6 +253,7 @@ UniValue getinfo(const UniValue& params, bool fHelp, const CPubKey& mypk)
     obj.push_back(Pair("version", CLIENT_VERSION));
     obj.push_back(Pair("protocolversion", PROTOCOL_VERSION));
     obj.push_back(Pair("KMDversion", KOMODO_VERSION));
+	obj.push_back(Pair("AQSversion", AQS_VERSION));
     obj.push_back(Pair("synced", KOMODO_INSYNC!=0));
     obj.push_back(Pair("notarized", notarized_height));
     obj.push_back(Pair("prevMoMheight", prevMoMheight));
@@ -367,8 +369,14 @@ UniValue getinfo(const UniValue& params, bool fHelp, const CPubKey& mypk)
             obj.push_back(Pair("commission",        ASSETCHAINS_COMMISSION));
         if ( ASSETCHAINS_STAKED != 0 )
             obj.push_back(Pair("staked",        ASSETCHAINS_STAKED));
-        if ( ASSETCHAINS_ALGO != ASSETCHAINS_EQUIHASH )
-            obj.push_back(Pair("algo",ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO]));
+        if ( ASSETCHAINS_ALGO == ASSETCHAINS_EQUIHASH ) {
+            uint64_t N = ASSETCHAINS_NK[0] ? ASSETCHAINS_NK[0] : 200;
+            uint64_t K = ASSETCHAINS_NK[1] ? ASSETCHAINS_NK[1] : 9;
+            std::string equihash_algo = "equihash (" + std::to_string(N) + "," + std::to_string(K) + ")";
+            obj.push_back(Pair("algo",equihash_algo));
+	    } else {
+            obj.push_back(Pair("algo", ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO]));
+        }
     }
     return obj;
 }
