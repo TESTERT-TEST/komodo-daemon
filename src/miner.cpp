@@ -70,6 +70,7 @@
 
 #include <boost/thread.hpp>
 #include <boost/tuple/tuple.hpp>
+#include <thread>
 #ifdef ENABLE_MINING
 #include <functional>
 #endif
@@ -1198,7 +1199,7 @@ void static RandomXMiner()
     int32_t gpucount = KOMODO_MAXGPUCOUNT;
     while ((ASSETCHAIN_INIT == 0 || KOMODO_INITDONE == 0))
     {
-        boost::this_thread::sleep_for(boost::chrono::seconds(1)); // allow to interrupt
+        sleep(1);
         if (komodo_baseid(chainName.symbol().c_str()) < 0)
             break;
     }
@@ -1352,7 +1353,7 @@ void static RandomXMiner()
                 static uint32_t counter;
                 if (counter++ < 10)
                     fprintf(stderr, "RandomXMiner: created illegal blockB, retry with counter=%u\n", counter);
-                boost::this_thread::sleep_for(boost::chrono::seconds(1));
+                sleep(1);
                 continue;
             }
 
@@ -1373,7 +1374,7 @@ void static RandomXMiner()
                     static uint32_t counter;
                     if (counter++ < 10)
                         fprintf(stderr, "skip generating %s on-demand block, no tx avail\n", chainName.symbol().c_str());
-                    boost::this_thread::sleep_for(boost::chrono::seconds(10));
+                    sleep(10);
                     continue;
                 } else fprintf(stderr, "%s vouts.%d mining.%d vs %d\n", chainName.symbol().c_str(), (int32_t)pblock->vtx[0].vout.size(), Mining_height, ASSETCHAINS_MINHEIGHT);
             }
@@ -1388,7 +1389,6 @@ void static RandomXMiner()
             pblock->nBits = GetNextWorkRequired(pindexPrev, pblock, Params().GetConsensus());
             savebits = pblock->nBits;
             HASHTarget = arith_uint256().SetCompact(savebits);
-            roundrobin_delay = ROUNDROBIN_DELAY;
             Mining_start = 0;
             gotinvalid = 0;
 
@@ -1405,7 +1405,8 @@ void static RandomXMiner()
 
                 CDataStream randomxInput(SER_NETWORK, PROTOCOL_VERSION);
                 randomxInput << pblocktemplate->block;
-
+                
+				rxdebug("%s: randomxKey=%s randomxInput=%s\n", randomxKey, HexStr(randomxInput).c_str());
                 rxdebug("%s: calculating randomx hash\n");
                 randomx_calculate_hash(myVM, &randomxInput, sizeof randomxInput, randomxHash);
                 rxdebug("%s: calculated randomx hash\n");
@@ -1449,18 +1450,20 @@ void static RandomXMiner()
                         }
 
                         CValidationState state;
-                        {
-                            LOCK(cs_main);
-                            if (!TestBlockValidity(state, B, chainActive.Tip(), true, false)) {
-                                h = UintToArith256(B.GetHash());
-                                fprintf(stderr, "RandomXMiner: Invalid randomx block mined, try again ");
-                                for (z = 31; z >= 0; z--)
-                                    fprintf(stderr, "%02x", ((uint8_t *)&h)[z]);
-                                gotinvalid = 1;
-                                fprintf(stderr, "\n");
-                                return (false);
-                            }
-                        }
+                    //{ LOCK(cs_main);
+                    if ( !TestBlockValidity(state,B, chainActive.Tip()), true, false))
+                    {
+                        h = UintToArith256(B.GetHash());
+                        fprintf(stderr,"RandomXMiner: Invalid randomx block mined, try again ");
+                        for (z=31; z>=0; z--)
+                            fprintf(stderr,"%02x",((uint8_t *)&h)[z]);
+                        gotinvalid = 1;
+                        fprintf(stderr,"\n");
+
+                        return(false);
+
+                    }
+                    //}
                         
                         SetThreadPriority(THREAD_PRIORITY_NORMAL);
                         LogPrintf("KomodoRandomXMiner:\n");
@@ -1529,11 +1532,11 @@ void static RandomXMiner()
         miningTimer.stop();
         c.disconnect();
 
-        if (myVM) randomx_destroy_vm(myVM);
+         randomx_destroy_vm(myVM);
         LogPrintf("%s: destroyed vm via thread interrupt\n", __func__);
-        if (randomxDataset) randomx_release_dataset(randomxDataset);
+         randomx_release_dataset(randomxDataset);
         rxdebug("%s: released dataset via thread interrupt\n");
-        if (randomxCache) randomx_release_cache(randomxCache);
+         randomx_release_cache(randomxCache);
         rxdebug("%s: released cache via thread interrupt\n");
 
         LogPrintf("KomodoRandomXMiner terminated\n");
@@ -1543,19 +1546,19 @@ void static RandomXMiner()
         c.disconnect();
         fprintf(stderr, "RandomXMiner: runtime error: %s\n", e.what());
 
-        if (myVM) randomx_destroy_vm(myVM);
+        randomx_destroy_vm(myVM);
         LogPrintf("%s: destroyed vm because of error\n", __func__);
-        if (randomxDataset) randomx_release_dataset(randomxDataset);
+        randomx_release_dataset(randomxDataset);
         rxdebug("%s: released dataset because of error\n");
-        if (randomxCache) randomx_release_cache(randomxCache);
+        randomx_release_cache(randomxCache);
         rxdebug("%s: released cache because of error\n");
 
         return;
     }
 
-    if (randomxDataset) randomx_release_dataset(randomxDataset);
+    randomx_release_dataset(randomxDataset);
     rxdebug("%s: released dataset in normal exit\n");
-    if (randomxCache) randomx_release_cache(randomxCache);
+    randomx_release_cache(randomxCache);
     rxdebug("%s: released cache in normal exit\n");
     miningTimer.stop();
     c.disconnect();
