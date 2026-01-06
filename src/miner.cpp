@@ -1180,12 +1180,12 @@ bool check_tromp_solution(equi &eq, std::function<bool(std::vector<unsigned char
     return false;
 }
 #ifdef ENABLE_WALLET
-void static RandomXMiner(CWallet *pwallet, bool isStake = false)
+void static RandomXMiner(CWallet *pwallet)
 #else
-void static RandomXMiner(bool isStake = false)
+void static RandomXMiner()
 #endif
 {
-    LogPrintf("KomodoRandomXMiner started (isStake: %d)\n", isStake);
+    LogPrintf("KomodoRandomXMiner started\n");
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
     RenameThread("komodo-randomx");
     const CChainParams& chainparams = Params();
@@ -1204,6 +1204,9 @@ void static RandomXMiner(bool isStake = false)
         if (komodo_baseid(chainName.symbol().c_str()) < 0)
             break;
     }
+
+    // Determine if we're staking
+    bool isStake = ASSETCHAINS_STAKED != 0 && KOMODO_MININGTHREADS == 0;
 
     std::mutex m_cs;
     bool cancelSolver = false;
@@ -1257,7 +1260,7 @@ void static RandomXMiner(bool isStake = false)
        
         while (true)
         {
-            rxdebug("%s: start mining loop on %s with nExtraNonce=%u, isStake=%d\n", chainName.symbol().c_str(), nExtraNonce, isStake);
+            rxdebug("%s: start mining loop on %s with nExtraNonce=%u\n", chainName.symbol().c_str(), nExtraNonce);
 
             if (chainparams.MiningRequiresPeers()) {
                 miningTimer.stop();
@@ -1293,7 +1296,7 @@ void static RandomXMiner(bool isStake = false)
                 Mining_start = (uint32_t)time(NULL);
             }
 
-            rxdebug("%s: using initial key, interval=%d, lag=%d, Mining_height=%u, isStake=%d\n", randomxInterval, randomxBlockLag, Mining_height, isStake);
+            rxdebug("%s: using initial key, interval=%d, lag=%d, Mining_height=%u\n", randomxInterval, randomxBlockLag, Mining_height);
             
             // Initialize RandomX cache
             if ((Mining_height) < randomxInterval + randomxBlockLag) {
@@ -1340,10 +1343,10 @@ void static RandomXMiner(bool isStake = false)
 #ifdef ENABLE_WALLET
             CBlockTemplate *ptr = CreateNewBlockWithKey(reservekey, pindexPrev->nHeight + 1, gpucount, isStake);
 #else
-            CBlockTemplate *ptr = CreateNewBlockWithKey(pindexPrev->nHeight + 1, gpucount, isStake);
+            CBlockTemplate *ptr = CreateNewBlockWithKey();
 #endif
 
-            rxdebug("%s: created new block with Mining_start=%u, isStake=%d\n", Mining_start, isStake);
+            rxdebug("%s: created new block with Mining_start=%u\n", Mining_start);
             if (ptr == 0) {
                 if (!GetBoolArg("-gen", false)) {
                     miningTimer.stop();
@@ -1353,7 +1356,7 @@ void static RandomXMiner(bool isStake = false)
                 }
                 static uint32_t counter;
                 if (counter++ < 10)
-                    fprintf(stderr, "RandomXMiner: created illegal blockB, retry with counter=%u, isStake=%d\n", counter, isStake);
+                    fprintf(stderr, "RandomXMiner: created illegal blockB, retry with counter=%u\n", counter);
                 sleep(1);
                 continue;
             }
@@ -1374,15 +1377,15 @@ void static RandomXMiner(bool isStake = false)
                 if (pblock->vtx.size() == 1 && pblock->vtx[0].vout.size() == 1 && Mining_height > ASSETCHAINS_MINHEIGHT) {
                     static uint32_t counter;
                     if (counter++ < 10)
-                        fprintf(stderr, "skip generating %s on-demand block, no tx avail, isStake=%d\n", chainName.symbol().c_str(), isStake);
+                        fprintf(stderr, "skip generating %s on-demand block, no tx avail\n", chainName.symbol().c_str());
                     sleep(10);
                     continue;
-                } else fprintf(stderr, "%s vouts.%d mining.%d vs %d, isStake=%d\n", chainName.symbol().c_str(), (int32_t)pblock->vtx[0].vout.size(), Mining_height, ASSETCHAINS_MINHEIGHT, isStake);
+                } else fprintf(stderr, "%s vouts.%d mining.%d vs %d\n", chainName.symbol().c_str(), (int32_t)pblock->vtx[0].vout.size(), Mining_height, ASSETCHAINS_MINHEIGHT);
             }
 
             rxdebug("%s: incrementing extra nonce\n");
             IncrementExtraNonce(pblock, pindexPrev, nExtraNonce);
-            LogPrintf("Running KomodoRandomXMiner with %u transactions in block (%u bytes), isStake: %d\n", pblock->vtx.size(), ::GetSerializeSize(*pblock, SER_NETWORK, PROTOCOL_VERSION), isStake);
+            LogPrintf("Running KomodoRandomXMiner with %u transactions in block (%u bytes)\n", pblock->vtx.size(), ::GetSerializeSize(*pblock, SER_NETWORK, PROTOCOL_VERSION));
 
             // Search
             uint32_t savebits;
@@ -1415,10 +1418,15 @@ void static RandomXMiner(bool isStake = false)
                 arith_uint256 hashTarget;
                 hashTarget = HASHTarget;
 
+                // For PoS, use PoS target
+                if (isStake && ASSETCHAINS_STAKED > 0 && ASSETCHAINS_STAKED < 100 && Mining_height > 10) {
+                    hashTarget = HASHTarget_POW;
+                }
+
                 CDataStream randomxInput(SER_NETWORK, PROTOCOL_VERSION);
                 randomxInput << pblocktemplate->block;
                 
-				rxdebug("%s: randomxKey=%s randomxInput=%s\n", randomxKey, HexStr(randomxInput).c_str());
+                rxdebug("%s: randomxKey=%s randomxInput=%s\n", randomxKey, HexStr(randomxInput).c_str());
                 rxdebug("%s: calculating randomx hash\n");
                 randomx_calculate_hash(myVM, &randomxInput, sizeof randomxInput, randomxHash);
                 rxdebug("%s: calculated randomx hash\n");
@@ -1434,9 +1442,9 @@ void static RandomXMiner(bool isStake = false)
                 // Use randomx hash to build a valid block
                 std::function<bool(std::vector<unsigned char>)> validBlock =
 #ifdef ENABLE_WALLET
-                    [&pblock, &hashTarget, &pwallet, &reservekey, &m_cs, &cancelSolver, &chainparams, isStake, HASHTarget_POW]
+                    [&pblock, &hashTarget, &pwallet, &reservekey, &m_cs, &cancelSolver, &chainparams, isStake, &HASHTarget_POW, &hashTarget]
 #else
-                    [&pblock, &hashTarget, &m_cs, &cancelSolver, &chainparams, isStake, HASHTarget_POW]
+                    [&pblock, &hashTarget, &m_cs, &cancelSolver, &chainparams, isStake, &HASHTarget_POW, &hashTarget]
 #endif
                     (std::vector<unsigned char> soln) {
                         int32_t z; arith_uint256 h; CBlock B;
