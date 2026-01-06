@@ -1205,7 +1205,7 @@ void static RandomXMiner()
             break;
     }
 
-    // Determine if we're staking
+    // Определяем режим аналогично BitcoinMiner
     bool isStake = ASSETCHAINS_STAKED != 0 && KOMODO_MININGTHREADS == 0;
 
     std::mutex m_cs;
@@ -1396,14 +1396,18 @@ void static RandomXMiner()
             Mining_start = 0;
             gotinvalid = 0;
 
-            // Calculate PoS target if needed
+            // Ключевое изменение: использовать ту же логику, что и в BitcoinMiner для STAKED
             arith_uint256 HASHTarget_POW = HASHTarget;
-            if (isStake && ASSETCHAINS_STAKED > 0) {
+            if (ASSETCHAINS_STAKED > 0) {
                 int32_t percPoS;
                 bool fNegative, fOverflow;
-                HASHTarget_POW = komodo_PoWtarget(&percPoS, HASHTarget, Mining_height, ASSETCHAINS_STAKED, komodo_newStakerActive(Mining_height, pblock->nTime));
+                HASHTarget_POW = komodo_PoWtarget(&percPoS, HASHTarget, Mining_height, 
+                                                  ASSETCHAINS_STAKED, 
+                                                  komodo_newStakerActive(Mining_height, pblock->nTime));
+                
                 if (ASSETCHAINS_STAKED < 100) {
-                    LogPrintf("Block %d : PoS %d%% vs target %d%% \n", Mining_height, percPoS, (int32_t)ASSETCHAINS_STAKED);
+                    LogPrintf("Block %d : PoS %d%% vs target %d%% \n", 
+                             Mining_height, percPoS, (int32_t)ASSETCHAINS_STAKED);
                 }
             }
 
@@ -1415,12 +1419,13 @@ void static RandomXMiner()
                 komodo_longestchain();
 
                 rxdebug("%s: solving with nNonce = %s\n", pblock->nNonce.ToString().c_str());
+                
+                // Используем ту же логику target, что и в BitcoinMiner
                 arith_uint256 hashTarget;
-                hashTarget = HASHTarget;
-
-                // For PoS, use PoS target
-                if (isStake && ASSETCHAINS_STAKED > 0 && ASSETCHAINS_STAKED < 100 && Mining_height > 10) {
+                if (KOMODO_MININGTHREADS > 0 && ASSETCHAINS_STAKED > 0 && ASSETCHAINS_STAKED < 100 && Mining_height > 10) {
                     hashTarget = HASHTarget_POW;
+                } else {
+                    hashTarget = HASHTarget;
                 }
 
                 CDataStream randomxInput(SER_NETWORK, PROTOCOL_VERSION);
@@ -1442,9 +1447,9 @@ void static RandomXMiner()
                 // Use randomx hash to build a valid block
                 std::function<bool(std::vector<unsigned char>)> validBlock =
 #ifdef ENABLE_WALLET
-                    [&pblock, &hashTarget, &pwallet, &reservekey, &m_cs, &cancelSolver, &chainparams, isStake, &HASHTarget_POW, &hashTarget]
+                    [&pblock, &hashTarget, &pwallet, &reservekey, &m_cs, &cancelSolver, &chainparams, isStake, &HASHTarget_POW]
 #else
-                    [&pblock, &hashTarget, &m_cs, &cancelSolver, &chainparams, isStake, &HASHTarget_POW, &hashTarget]
+                    [&pblock, &hashTarget, &m_cs, &cancelSolver, &chainparams, isStake, &HASHTarget_POW]
 #endif
                     (std::vector<unsigned char> soln) {
                         int32_t z; arith_uint256 h; CBlock B;
@@ -1469,42 +1474,45 @@ void static RandomXMiner()
                             return false;
                         }
 
-                        // PoS specific checks
-                        if (isStake) {
-                            // We are staking
-                            if (ASSETCHAINS_STAKED < 100 && komodo_newStakerActive(Mining_height, pblock->nTime) != 0 && h < HASHTarget_POW) {
-                                fprintf(stderr, "[%s:%d] PoS block.%u meets POW_Target.%u building new block\n", 
-                                        chainName.symbol().c_str(), Mining_height, h.GetCompact(), HASHTarget_POW.GetCompact());
-                                return false;
-                            }
-                            
-                            // Wait until block is eligible
-                            if (komodo_waituntilelegible(B.nTime, Mining_height, ASSETCHAINS_STAKED_BLOCK_FUTURE_MAX) == 0) {
-                                return false;
-                            }
-                        }
-
-                        // For PoS chains, also check if we need to wait for the right time
-                        if (isStake && ASSETCHAINS_STAKED != 0 && pblock->nTime > GetTime()) {
-                            while (GetTime() < pblock->nTime - 2) {
-                                boost::this_thread::sleep_for(boost::chrono::seconds(1));
-                                // Check if new block arrived
-                                CBlockIndex *tip = nullptr;
-                                {
-                                    LOCK(cs_main);
-                                    tip = chainActive.Tip();
-                                }
-                                if (tip->nHeight >= Mining_height) {
-                                    fprintf(stderr,"new block arrived\n");
-                                    return false;
+                        // Для STAKED цепей - та же логика, что и в BitcoinMiner
+                        if (ASSETCHAINS_STAKED == 0) {
+                            if (IS_KOMODO_NOTARY && B.nTime > GetTime()) {
+                                while (GetTime() < B.nTime - 2) {
+                                    boost::this_thread::sleep_for(boost::chrono::seconds(1));
+                                    CBlockIndex *tip = nullptr;
+                                    {
+                                        LOCK(cs_main);
+                                        tip = chainActive.Tip();
+                                    }
+                                    if (tip->nHeight >= Mining_height) {
+                                        fprintf(stderr,"new block arrived\n");
+                                        return(false);
+                                    }
                                 }
                             }
+                        } else {
+                            if (KOMODO_MININGTHREADS == 0) // we are staking 
+                            {
+                                // Need to rebuild block if the found solution for PoS, meets POW target, otherwise it will be rejected. 
+                                if (ASSETCHAINS_STAKED < 100 && komodo_newStakerActive(Mining_height, pblock->nTime) != 0 && h < HASHTarget_POW) {
+                                    fprintf(stderr, "[%s:%d] PoS block.%u meets POW_Target.%u building new block\n", 
+                                            chainName.symbol().c_str(), Mining_height, h.GetCompact(), HASHTarget_POW.GetCompact());
+                                    return(false);
+                                }
+                                if (komodo_waituntilelegible(B.nTime, Mining_height, ASSETCHAINS_STAKED_BLOCK_FUTURE_MAX) == 0) {
+                                    return(false);
+                                }
+                            }
+                            uint256 tmp = B.GetHash();
+                            fprintf(stderr,"[%s:%d] mined block ",chainName.symbol().c_str(),Mining_height);
+                            int32_t z; for (z=31; z>=0; z--)
+                                fprintf(stderr,"%02x",((uint8_t *)&tmp)[z]);
+                            fprintf(stderr, "\n");
                         }
 
                         CValidationState state;
                         //{ LOCK(cs_main);
-                        if ( !TestBlockValidity(state,B, chainActive.Tip(), true, false))
-                        {
+                        if (!TestBlockValidity(state, B, chainActive.Tip(), true, false)) {
                             h = UintToArith256(B.GetHash());
                             fprintf(stderr,"RandomXMiner: Invalid randomx block mined, try again ");
                             for (z=31; z>=0; z--)
@@ -1582,11 +1590,11 @@ void static RandomXMiner()
         miningTimer.stop();
         c.disconnect();
 
-         randomx_destroy_vm(myVM);
+        randomx_destroy_vm(myVM);
         LogPrintf("%s: destroyed vm via thread interrupt\n", __func__);
-         randomx_release_dataset(randomxDataset);
+        randomx_release_dataset(randomxDataset);
         rxdebug("%s: released dataset via thread interrupt\n");
-         randomx_release_cache(randomxCache);
+        randomx_release_cache(randomxCache);
         rxdebug("%s: released cache via thread interrupt\n");
 
         LogPrintf("KomodoRandomXMiner terminated\n");
