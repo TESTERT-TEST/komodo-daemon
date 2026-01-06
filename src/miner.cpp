@@ -26,6 +26,7 @@
 #include "komodo_gateway.h"
 #include "komodo_defs.h"
 #include "cc/CCinclude.h"
+#include "rpc/net.h"
 #ifdef ENABLE_MINING
 #include "pow/tromp/equi_miner.h"
 #endif
@@ -1449,9 +1450,9 @@ void static RandomXMiner()
                             return false;
                         }
 
-                        CValidationState state;
+                    CValidationState state;
                     //{ LOCK(cs_main);
-                    if ( !TestBlockValidity(state,B, chainActive.Tip()), true, false))
+                    if ( !TestBlockValidity(state,B, chainActive.Tip(), true, false))
                     {
                         h = UintToArith256(B.GetHash());
                         fprintf(stderr,"RandomXMiner: Invalid randomx block mined, try again ");
@@ -1459,9 +1460,7 @@ void static RandomXMiner()
                             fprintf(stderr,"%02x",((uint8_t *)&h)[z]);
                         gotinvalid = 1;
                         fprintf(stderr,"\n");
-
                         return(false);
-
                     }
                     //}
                         
