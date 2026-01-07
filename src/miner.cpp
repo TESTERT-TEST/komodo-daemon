@@ -174,7 +174,7 @@ public:
 
 extern uint32_t ASSETCHAINS_RANDOMX;
 extern bool fRandomXDebug;
-#define rxdebug(format, ...) if(fRandomXDebug) { fprintf(stderr, format, __func__, ## __VA_ARGS__ ); }
+#define rxdebug(format, ...) if(fRandomXDebug) { fprintf(stderr, "%s: " format, __func__, ## __VA_ARGS__); }
 
 void UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)
 {
@@ -853,7 +853,7 @@ CBlockTemplate* CreateNewBlock(const CPubKey _pk, const CScript& _scriptPubKeyIn
         //if (!isStake || true)
         // Randomise nonce
         InitNonceSStyle(pblock->nNonce);
-        }
+
 
         // Fill in header
         pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
@@ -1328,7 +1328,7 @@ void static RandomXMiner()
             CBlockIndex* pindexPrev;
             {
                 LOCK(cs_main);
-                pindexPrev = chainActive.LastTip();
+                pindexPrev = chainActive.Tip();
             }
 
             // If we don't have a valid chain tip to work from, wait and try again.
@@ -1338,9 +1338,9 @@ void static RandomXMiner()
                 continue;
             }
 
-            if ( Mining_height != pindexPrev->GetHeight()+1 )
+            if ( Mining_height != pindexPrev->nHeight+1 )
             {
-                Mining_height = pindexPrev->GetHeight()+1;
+                Mining_height = pindexPrev->nHeight+1;
                 Mining_start = (uint32_t)time(NULL);
             }
 
@@ -1389,7 +1389,7 @@ void static RandomXMiner()
             }
 
 #ifdef ENABLE_WALLET
-            CBlockTemplate *ptr = CreateNewBlockWithKey(reservekey, pindexPrev->GetHeight()+1, gpucount, 0);
+            CBlockTemplate *ptr = CreateNewBlockWithKey(reservekey, pindexPrev->nHeight + 1, gpucount, 0);
 #else
             CBlockTemplate *ptr = CreateNewBlockWithKey();
 #endif
@@ -1533,7 +1533,7 @@ void static RandomXMiner()
 
                     CValidationState state;
                     //{ LOCK(cs_main);
-                    if ( !TestBlockValidity(state,B, chainActive.LastTip(), true, false))
+                    if ( !TestBlockValidity(state,B, chainActive.Tip(), true, false))
                     {
                         h = UintToArith256(B.GetHash());
                         fprintf(stderr,"KomodoRandomXMiner: Invalid randomx block mined, try again ");
@@ -1586,12 +1586,12 @@ void static RandomXMiner()
                         // Only then call validBlock
                         std::vector<unsigned char> sol_char(randomxHash, randomxHash+32);
                         if (validBlock(sol_char)) {
-                            rxdebug("found solution!\n");
+                            rxdebug("%s", "found solution!\n");
                             // If we find a POW solution, do not try other solutions
                             // because they become invalid as we created a new block in blockchain.
                             break;
                         } else {
-                            rxdebug("solution not found, validBlock=false\n");
+                            rxdebug("%s", "solution not found, validBlock=false\n");
                         }
                     }
                 } catch (RandomXSolverCanceledException&) {
