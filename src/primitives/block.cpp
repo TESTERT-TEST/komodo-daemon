@@ -32,14 +32,6 @@ uint256 (CBlockHeader::*CBlockHeader::hashFunction)() const = &CBlockHeader::Get
 
 uint256 CBlockHeader::GetSHA256DHash() const
 {
-    // For RandomX blocks, the block hash is the RandomX hash stored in nSolution
-    if (nSolution.size() == 32) {
-        uint256 hash;
-        memcpy(hash.begin(), nSolution.data(), 32);
-        return hash;
-    }
-
-    // Fallback for blocks without solution
     return SerializeHash(*this);
 }
 
