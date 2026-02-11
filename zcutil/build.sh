@@ -126,6 +126,6 @@ else
     time make "$@"
 fi
 
-cd $WD
+cd $PWD
 
 "$MAKE" "$@"
