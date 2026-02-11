@@ -53,6 +53,7 @@ CXXFLAGS="-arch x86_64 -I$PREFIX/include -fwrapv -fno-strict-aliasing \
 -Wno-unknown-warning-option -Werror -Wno-error=attributes -g" \
 ./configure --prefix="${PREFIX}" --with-gui=no "$HARDENING_ARG" "$LCOV_ARG" "$DEBUGGING_ARG"
 
+WD=$PWD
 # Build RandomX
 cd src/crypto/randomx
 if [ -d "build" ]
@@ -64,6 +65,6 @@ else
     make
 fi
 
-cd $(pwd)
+cd $WD
 
 make "$@" NO_GTEST=1 STATIC=1
