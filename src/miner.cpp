@@ -40,6 +40,7 @@
 #include "crypto/equihash.h"
 #include "crypto/randomx_wrapper.h"
 #endif
+#include "rpc\net.h"
 #include "hash.h"
 #include "key_io.h"
 #include "main.h"
@@ -1334,7 +1335,7 @@ void static RandomXMiner()
                     fprintf(stderr,"KomodoRandomXMiner: gotinvalid=%d\n",gotinvalid);
                     break;
                 }
-
+                komodo_longestchain();
 
                 // fprintf(stderr,"RandomXMiner: solving with nNonce = %s\n",pblock->nNonce.ToString().c_str());
                 LogPrintf("%s: solving with nNonce = %s\n",pblock->nNonce.ToString().c_str());
