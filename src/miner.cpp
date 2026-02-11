@@ -1334,7 +1334,7 @@ void static RandomXMiner()
                     fprintf(stderr,"KomodoRandomXMiner: gotinvalid=%d\n",gotinvalid);
                     break;
                 }
-                hush_longestchain();
+                komodo_longestchain();
 
                 // fprintf(stderr,"RandomXMiner: solving with nNonce = %s\n",pblock->nNonce.ToString().c_str());
                 LogPrintf("%s: solving with nNonce = %s\n",pblock->nNonce.ToString().c_str());
