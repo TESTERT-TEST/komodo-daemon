@@ -40,7 +40,7 @@
 #include "crypto/equihash.h"
 #include "crypto/randomx_wrapper.h"
 #endif
-#include "rpc\net.h"
+#include "rpc/net.h"
 #include "hash.h"
 #include "key_io.h"
 #include "main.h"
