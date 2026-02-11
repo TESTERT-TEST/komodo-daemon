@@ -38,7 +38,7 @@
 #include "consensus/validation.h"
 #ifdef ENABLE_MINING
 #include "crypto/equihash.h"
-#include "crypto/randomx/src/randomx.h"
+#include "crypto/randomx_wrapper.h"
 #endif
 #include "hash.h"
 #include "key_io.h"
@@ -1179,7 +1179,7 @@ void static RandomXMiner()
     while ( (ASSETCHAIN_INIT == 0 || KOMODO_INITDONE == 0) )
     {
         sleep(1);
-        if ( hush_baseid(chainName.symbol().c_str()) < 0 )
+        if ( komodo_baseid(chainName.symbol().c_str()) < 0 )
             break;
     }
 
@@ -1198,11 +1198,11 @@ void static RandomXMiner()
     currentSeed.SetNull();
 
     try {
-        rxdebug("%s: mining %s with randomx\n", chainName.symbol().c_str();
+        LogPrintf("%s: mining %s with randomx\n", chainName.symbol().c_str();
        
         while (true)
         {
-            rxdebug("%s: start mining loop on %s with nExtraNonce=%u\n", chainName.symbol().c_str(), nExtraNonce);
+            LogPrintf("%s: start mining loop on %s with nExtraNonce=%u\n", chainName.symbol().c_str(), nExtraNonce);
 
             if (chainparams.MiningRequiresPeers()) {
 
@@ -1228,7 +1228,7 @@ void static RandomXMiner()
             CBlockIndex* pindexPrev;
             {
                 LOCK(cs_main);
-                pindexPrev = chainActive.LastTip();
+                pindexPrev = chainActive.Tip();
             }
 
             // If we don't have a valid chain tip to work from, wait and try again.
@@ -1259,7 +1259,7 @@ void static RandomXMiner()
             
             // Update main seed if epoch changed
             if (newSeed != currentSeed) {
-                rxdebug("%s: epoch change - updating seed to height %lu\n", seedHeight);
+                LogPrintf("%s: epoch change - updating seed to height %lu\n", seedHeight);
                 RandomX_SetMainSeedHash(newSeed.begin(), 32);
                 currentSeed = newSeed;
             }
@@ -1271,7 +1271,7 @@ void static RandomXMiner()
             CBlockTemplate *ptr = CreateNewBlockWithKey();
 #endif
 
-            rxdebug("%s: created new block with Mining_start=%u\n",Mining_start);
+            LogPrintf("%s: created new block with Mining_start=%u\n",Mining_start);
             if ( ptr == 0 )
             {
                 if ( !GetBoolArg("-gen",false))
@@ -1288,7 +1288,7 @@ void static RandomXMiner()
                 continue;
             }
             // fprintf(stderr,"RandomXMiner: getting block template\n");
-            rxdebug("%s: getting block template\n");
+            LogPrintf("%s: getting block template\n");
 
             unique_ptr<CBlockTemplate> pblocktemplate(ptr);
             if (!pblocktemplate.get())
@@ -1314,7 +1314,7 @@ void static RandomXMiner()
                     continue;
                 } else fprintf(stderr,"%s vouts.%d mining.%d vs %d\n",chainName.symbol().c_str(),(int32_t)pblock->vtx[0].vout.size(),Mining_height,ASSETCHAINS_MINHEIGHT);
             }
-            rxdebug("%s: incrementing extra nonce\n");
+            LogPrintf("%s: incrementing extra nonce\n");
             IncrementExtraNonce(pblock, pindexPrev, nExtraNonce);
             // fprintf(stderr,"RandomXMiner: %u transactions in block\n",(int32_t)pblock->vtx.size());
             LogPrintf("Running KomodoRandomXMiner with %u transactions in block (%u bytes)\n",pblock->vtx.size(),::GetSerializeSize(*pblock,SER_NETWORK,PROTOCOL_VERSION));
@@ -1337,7 +1337,7 @@ void static RandomXMiner()
                 hush_longestchain();
 
                 // fprintf(stderr,"RandomXMiner: solving with nNonce = %s\n",pblock->nNonce.ToString().c_str());
-                rxdebug("%s: solving with nNonce = %s\n",pblock->nNonce.ToString().c_str());
+                LogPrintf("%s: solving with nNonce = %s\n",pblock->nNonce.ToString().c_str());
                 arith_uint256 hashTarget;
                 hashTarget = HASHTarget;
 
@@ -1345,18 +1345,18 @@ void static RandomXMiner()
                 // Use the current block as randomx input
                 randomxInput << pblocktemplate->block;
 
-                rxdebug("%s: randomxInput size=%zu\n", randomxInput.size());
+                LogPrintf("%s: randomxInput size=%zu\n", randomxInput.size());
 
                 // Calculate RandomX hash using wrapper
-                rxdebug("%s: calculating randomx hash\n");
+                LogPrintf("%s: calculating randomx hash\n");
                 uint256 randomxHash;
                 if (!RandomX_Hash_Block(&randomxInput[0], randomxInput.size(), randomxHash)) {
                     LogPrintf("RandomXMiner: RandomX_Hash_Block failed!\n");
                     break;
                 }
-                rxdebug("%s: calculated randomx hash\n");
+                LogPrintf("%s: calculated randomx hash\n");
 
-                rxdebug("%s: randomxHash=%s\n", randomxHash.GetHex().c_str());
+                LogPrintf("%s: randomxHash=%s\n", randomxHash.GetHex().c_str());
 
                 // Use randomx hash to build a valid block
                 std::function<bool(std::vector<unsigned char>)> validBlock =
@@ -1368,13 +1368,13 @@ void static RandomXMiner()
                 (std::vector<unsigned char> soln) {
                     int32_t z; arith_uint256 h; CBlock B;
                     // Write the solution to the hash and compute the result.
-                    rxdebug("%s: Checking solution against target\n");
+                    LogPrintf("%s: Checking solution against target\n");
                     pblock->nSolution = soln;
                     solutionTargetChecks.increment();
                     B = *pblock;
                     h = UintToArith256(B.GetHash());
 
-                    rxdebug("%s: h=");
+                    LogPrintf("%s: h=");
                     if (fRandomXDebug) {
                         for (z=31; z>=0; z--)
                             fprintf(stderr,"%02x",((uint8_t *)&h)[z]);
@@ -1386,13 +1386,13 @@ void static RandomXMiner()
 
                     if ( h > hashTarget )
                     {
-                        rxdebug("%s: h > hashTarget");
+                        LogPrintf("%s: h > hashTarget");
                         return false;
                     }
 
                     CValidationState state;
                     //{ LOCK(cs_main);
-                    if ( !TestBlockValidity(state,B, chainActive.LastTip(), true, false))
+                    if ( !TestBlockValidity(state,B, chainActive.Tip(), true, false))
                     {
                         h = UintToArith256(B.GetHash());
                         fprintf(stderr,"KomodoRandomXMiner: Invalid randomx block mined, try again ");
@@ -1434,12 +1434,12 @@ void static RandomXMiner()
                         std::vector<unsigned char> sol_char(randomxHash.begin(), randomxHash.end());
                         bool found = validBlock(sol_char);
                         if (found) {
-                            rxdebug("%s: found solution!\n");
+                            LogPrintf("%s: found solution!\n");
                             // If we find a POW solution, do not try other solutions
                             // because they become invalid as we created a new block in blockchain.
                             break;
                         } else {
-                            rxdebug("%s: solution not found, validBlock=false\n");
+                            LogPrintf("%s: solution not found, validBlock=false\n");
                         }
                     } catch (RandomXSolverCanceledException&) {
                         LogPrintf("HushRandomXMiner solver canceled\n");
