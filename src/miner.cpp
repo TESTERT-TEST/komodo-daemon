@@ -1335,6 +1335,7 @@ void static RandomXMiner()
                     break;
                 }
 
+
                 // fprintf(stderr,"RandomXMiner: solving with nNonce = %s\n",pblock->nNonce.ToString().c_str());
                 LogPrintf("%s: solving with nNonce = %s\n",pblock->nNonce.ToString().c_str());
                 arith_uint256 hashTarget;
@@ -1372,8 +1373,6 @@ void static RandomXMiner()
                     solutionTargetChecks.increment();
                     B = *pblock;
                     h = UintToArith256(B.GetHash());
-
-                    LogPrintf("%s: h=")
 
                     if ( h > hashTarget )
                     {
