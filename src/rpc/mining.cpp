@@ -890,7 +890,7 @@ int randomxBlockLag = GetArg("-ac_randomx_lag", 64);
 uint256 randomxSeed;
 int keyHeight = 0;
 
-int nHeight = pindexPrev->GetHeight() + 1;
+int nHeight = pindexPrev->nHeight + 1;
 
 // Вычисляем seed по той же логике, что и в RandomXMiner и CheckRandomXSolution
 if (nHeight < randomxInterval + randomxBlockLag) {
