@@ -13,6 +13,17 @@ cd $BASE_DIR/depends
 make HOST=$HOST NO_QT=1 "$@"
 cd $BASE_DIR
 
+# Build RandomX
+cd src/crypto/randomx
+if [ -d "build" ]
+then
+    ls -la build/librandomx*
+else
+    mkdir build && cd build
+    CC="${CC} -g " CXX="${CXX} -g " cmake -DARCH=native ..
+    make
+fi
+
 ./autogen.sh
 CONFIG_SITE=$BASE_DIR/depends/$HOST/share/config.site CXXFLAGS="-DPTW32_STATIC_LIB -DCURL_STATICLIB -DCURVE_ALT_BN128 -pthread" ./configure --prefix=$PREFIX --host=$HOST --enable-static --disable-shared
 sed -i 's/-lboost_system-mt /-lboost_system-mt-s /' configure

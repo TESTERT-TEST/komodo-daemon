@@ -110,6 +110,18 @@ fi
 
 HOST="$HOST" BUILD="$BUILD" NO_PROTON="$PROTON_ARG" "$MAKE" "$@" -C ./depends/
 
+# Build RandomX
+cd src/crypto/randomx
+if [ -d "build" ]
+then
+    ls -la build/librandomx*
+else
+    mkdir build && cd build
+    cmake -DARCH=native ..
+    # pass along potential -jX and other args
+    time make "$@"
+fi
+
 ./autogen.sh
 
 CONFIG_SITE="$PWD/depends/$HOST/share/config.site" ./configure "$HARDENING_ARG" "$LCOV_ARG" "$TEST_ARG" "$MINING_ARG" "$PROTON_ARG" "$DEBUGGING_ARG" "$CONFIGURE_FLAGS"

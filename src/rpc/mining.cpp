@@ -26,6 +26,9 @@
 #include "komodo_bitcoind.h"
 #ifdef ENABLE_MINING
 #include "crypto/equihash.h"
+#include "crypto/randomx/src/randomx.h"
+#include "hash.h"
+#include "util.h"
 #endif
 #include "init.h"
 #include "main.h"
@@ -48,6 +51,8 @@
 #include <univalue.h>
 
 using namespace std;
+
+#include "komodo_globals.h"
 
 /**
  * Return average network hashes per second based on the last 'lookup' blocks,
@@ -825,7 +830,8 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp, const CPubKey& myp
         pindexPrev = pindexPrevNew;
     }
     CBlock* pblock = &pblocktemplate->block; // pointer for convenience
-
+// ========== ИСПРАВЛЕНИЕ: Вычисляем merkle root ==========
+    pblock->hashMerkleRoot = pblock->BuildMerkleTree();
     // Update nTime
     UpdateTime(pblock, Params().GetConsensus(), pindexPrev);
     pblock->nNonce = uint256();
@@ -877,7 +883,34 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp, const CPubKey& myp
 
     UniValue aux(UniValue::VOBJ);
     aux.push_back(Pair("flags", HexStr(COINBASE_FLAGS.begin(), COINBASE_FLAGS.end())));
+// ========== НАЧАЛО ИСПРАВЛЕННОГО RANDOMX SEED ДЛЯ  ПУЛА ==========
+// Получаем параметры RandomX (аналогично miner.cpp)
+int randomxInterval = GetArg("-ac_randomx_interval", 1024);
+int randomxBlockLag = GetArg("-ac_randomx_lag", 64);
+uint256 randomxSeed;
+int keyHeight = 0;
 
+int nHeight = pindexPrev->GetHeight() + 1;
+
+// Вычисляем seed по той же логике, что и в RandomXMiner и CheckRandomXSolution
+if (nHeight < randomxInterval + randomxBlockLag) {
+    // Для генезисной эпохи используем специальный seed как в miner.cpp
+    randomxSeed.SetNull();
+    *randomxSeed.begin() = 0x08;  // Это соответствует логике в miner.cpp
+    keyHeight = 0;
+} else {
+    // Вычисляем keyHeight по формуле из miner.cpp
+    keyHeight = ((nHeight - randomxBlockLag) / randomxInterval) * randomxInterval;
+    CBlockIndex* pkeyIndex = chainActive[keyHeight];
+    if (pkeyIndex) {
+        randomxSeed = pkeyIndex->GetBlockHash();
+    } else {
+        // fallback - не должно происходить при нормальной работе
+        randomxSeed = uint256();
+        LogPrintf("WARNING: Could not find block at height %d for RandomX seed\n", keyHeight);
+    }
+}
+// ========== КОНЕЦ ИСПРАВЛЕННОГО RANDOMX SEED ==========
     arith_uint256 hashTarget = arith_uint256().SetCompact(pblock->nBits);
 
     static UniValue aMutable(UniValue::VARR);
@@ -893,6 +926,16 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp, const CPubKey& myp
     result.push_back(Pair("version", pblock->nVersion));
     result.push_back(Pair("previousblockhash", pblock->hashPrevBlock.GetHex()));
     result.push_back(Pair("finalsaplingroothash", pblock->hashFinalSaplingRoot.GetHex()));
+	
+	// ========== ДОБАВЛЯЕМ defaultroots ДЛЯ Template ==========
+    UniValue defaults(UniValue::VOBJ);
+    defaults.push_back(Pair("merkleroot", pblock->hashMerkleRoot.GetHex()));
+    defaults.push_back(Pair("blockcommitmentshash", pblock->hashFinalSaplingRoot.GetHex()));
+    defaults.push_back(Pair("chainhistoryroot", ""));
+    defaults.push_back(Pair("authdataroot", ""));
+    result.push_back(Pair("defaultroots", defaults));
+    // ========== КОНЕЦ ДОБАВЛЕНИЙ ==========
+	
     result.push_back(Pair("transactions", transactions));
     if (coinbasetxn) {
         assert(txCoinbase.isObject());
@@ -922,6 +965,28 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp, const CPubKey& myp
     result.push_back(Pair("bits", strprintf("%08x", pblock->nBits)));
     result.push_back(Pair("height", (int64_t)(pindexPrev->nHeight+1)));
 
+
+    // ========== RANDOMX ПОЛЯ ДЛЯ ПУЛА (ТОЛЬКО СОВМЕСТИМЫЕ) ==========
+    // Основные поля (прямой порядок байтов)
+    result.push_back(Pair("randomxseedhash", HexStr(randomxSeed.begin(), randomxSeed.end())));
+    result.push_back(Pair("randomxseedheight", (int64_t)keyHeight));
+
+    
+    // Добавить next seed hash для предварительного кэширования
+    uint256 randomxNextSeed;
+    int nextKeyHeight = 0;
+
+    if (nHeight + randomxBlockLag >= keyHeight + randomxInterval) {
+        nextKeyHeight = keyHeight + randomxInterval;
+        CBlockIndex* pnextKeyIndex = chainActive[nextKeyHeight];
+        if (pnextKeyIndex) {
+            randomxNextSeed = pnextKeyIndex->GetBlockHash();
+            // ВАЖНО: Используем HexStr() для прямого порядка байтов
+            result.push_back(Pair("randomxnextseedhash", HexStr(randomxNextSeed.begin(), randomxNextSeed.end())));
+        }
+    }
+    
+	
     //fprintf(stderr,"return complete template\n");
     return result;
 }
