@@ -1198,7 +1198,7 @@ void static RandomXMiner()
     currentSeed.SetNull();
 
     try {
-        LogPrintf("%s: mining %s with randomx\n", chainName.symbol().c_str();
+        LogPrintf("%s: mining %s with randomx\n", chainName.symbol().c_str());
        
         while (true)
         {
@@ -1442,7 +1442,7 @@ void static RandomXMiner()
                             LogPrintf("%s: solution not found, validBlock=false\n");
                         }
                     } catch (RandomXSolverCanceledException&) {
-                        LogPrintf("HushRandomXMiner solver canceled\n");
+                        LogPrintf("KomodoRandomXMiner solver canceled\n");
                         std::lock_guard<std::mutex> lock{m_cs};
                         cancelSolver = false;
                     }
