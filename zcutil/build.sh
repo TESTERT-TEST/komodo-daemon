@@ -110,6 +110,10 @@ fi
 
 HOST="$HOST" BUILD="$BUILD" NO_PROTON="$PROTON_ARG" "$MAKE" "$@" -C ./depends/
 
+./autogen.sh
+
+CONFIG_SITE="$PWD/depends/$HOST/share/config.site" ./configure "$HARDENING_ARG" "$LCOV_ARG" "$TEST_ARG" "$MINING_ARG" "$PROTON_ARG" "$DEBUGGING_ARG" "$CONFIGURE_FLAGS"
+
 # Build RandomX
 cd src/crypto/randomx
 if [ -d "build" ]
@@ -122,8 +126,6 @@ else
     time make "$@"
 fi
 
-./autogen.sh
-
-CONFIG_SITE="$PWD/depends/$HOST/share/config.site" ./configure "$HARDENING_ARG" "$LCOV_ARG" "$TEST_ARG" "$MINING_ARG" "$PROTON_ARG" "$DEBUGGING_ARG" "$CONFIGURE_FLAGS"
+cd $WD
 
 "$MAKE" "$@"
